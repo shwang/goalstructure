@@ -61,7 +61,7 @@ def sample_action(mdp, state, goal, beta=1, cached_probs=None,
     if cached_probs is not None:
         P = cached_probs
     else:
-        P = mdp.action_probabilitilies(goal, beta=beta)
+        P = mdp.action_probabilities(goal, beta=beta)
 
     if absorb_only_on_goal:
             choice = mdp.Actions.ABSORB

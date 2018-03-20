@@ -56,9 +56,10 @@ def infer_joint(g, dests, betas, T, use_gridless=False, traj=[],
         occ_res [np.ndarray]: A (T+1 x S) array, where the `t`th entry is the
             probability of state S in `t` timesteps from now.
     Verbose Returns:
-        occ_all [np.ndarray]: A (|betas| x T+1 x S) array, where the `b`th entry
+        occ_all [np.ndarray]: A (|dests| x |betas| x T+1 x S) array, where the
+            `(d, b)`th entry
             is the (T+1 x S) expected states probabilities if it were the case
-            that `beta_star == beta[b]`.
+            that `dest == dests[d] and beta_star == beta[b]`.
         P_joint_DB [np.ndarray]: A (|dests| x |betas|) dimension array, where
             the `b`th entry is the posterior probability associated with
             `betas[b]`.
