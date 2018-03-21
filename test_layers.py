@@ -39,10 +39,11 @@ class TestDeterministicDataSet(TestCase):
 class TestTinyPolicyMap(TestCase):
     def test_give_everything(self):
         model = DirectAction()
-        sess = tf.Session()
-        sess.run(tf.global_variables_initializer())
-        model.train_model(sess, dd, mb_size=9, iters=300, test_data=dd)
-        model.assess_model(sess, dd)
+        with model.graph.as_default():
+            sess = tf.Session()
+            sess.run(tf.global_variables_initializer())
+            model.train_model(sess, dd, mb_size=9, iters=300, test_data=dd)
+            model.assess_model(sess, dd)
 
 class TestDirectActions(TestCase):
     def test_no_crash(self):

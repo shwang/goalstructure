@@ -47,9 +47,10 @@ class ExpModel(object):
 class TFModel(ExpModel):
     def __init__(self, tf_model, iters=1000):
         self.tf_model = tf_model
-        self.sess = tf.Session()
-        self.sess.run(tf.global_variables_initializer())
         self.iters = iters
+        with self.tf_model.graph.as_default():
+            self.sess = tf.Session()
+            self.sess.run(tf.global_variables_initializer())
 
     def train(self, data):
         self.tf_model.train_model(self.sess, data, iters=self.iters)
@@ -59,6 +60,8 @@ class TFModel(ExpModel):
 
     def close(self):
         self.sess.close()
+        del self.sess
+        self.tf_model.close()
 
 from pp.mdp import GridWorldMDP
 from pp.inference.hardmax import action

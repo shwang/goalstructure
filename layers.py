@@ -40,53 +40,61 @@ class NN(object):
         self.y_hat_shape = y_hat_shape
         self.use_y_sparse = use_y_sparse
         self.num_labels = num_labels
+        self.graph = tf.Graph()
         self.init_training()
 
+    def close(self):
+        del self.graph
+        print("closing the graph :~")
+
     def xavier_init(self, size):
-        in_dim = size[0]
-        xavier_stddev = 1. / tf.sqrt(in_dim / 2.)
-        return tf.random_normal(shape=size, stddev=xavier_stddev)
+        with self.graph.as_default():
+            in_dim = size[0]
+            xavier_stddev = 1. / tf.sqrt(in_dim / 2.)
+            return tf.random_normal(shape=size, stddev=xavier_stddev)
 
     def init_training(self):
-        self.X = tf.placeholder(tf.float32, shape=[None, self.input_size],
-                name="X")
-        self.Y = tf.placeholder(tf.float32, shape=[None, self.output_size],
-                name="Y")
-        if self.num_labels == 1:
-            self.Y_sparse = tf.placeholder(tf.int32, shape=[None],
-                    name="Y_sparse")
-        else:
-            self.Y_sparse = tf.placeholder(tf.int32,
-                    shape=[None, self.num_labels],
-                    name="Y_sparse")
+        with self.graph.as_default():
+            self.X = tf.placeholder(tf.float32, shape=[None, self.input_size],
+                    name="X")
+            self.Y = tf.placeholder(tf.float32, shape=[None, self.output_size],
+                    name="Y")
+            if self.num_labels == 1:
+                self.Y_sparse = tf.placeholder(tf.int32, shape=[None],
+                        name="Y_sparse")
+            else:
+                self.Y_sparse = tf.placeholder(tf.int32,
+                        shape=[None, self.num_labels],
+                        name="Y_sparse")
 
-        H = self.hidden_size
-        self.W1 = tf.Variable(self.xavier_init([self.input_size, H]), name="W1")
-        self.b1 = tf.Variable(tf.zeros(shape=[H]), name="b1")
+            H = self.hidden_size
+            self.W1 = tf.Variable(self.xavier_init([self.input_size, H]),
+                    name="W1")
+            self.b1 = tf.Variable(tf.zeros(shape=[H]), name="b1")
 
-        self.W2 = tf.Variable(self.xavier_init([H, H]), name="W2")
-        self.b2 = tf.Variable(tf.zeros(shape=[H]))
+            self.W2 = tf.Variable(self.xavier_init([H, H]), name="W2")
+            self.b2 = tf.Variable(tf.zeros(shape=[H]))
 
-        self.W3 = tf.Variable(self.xavier_init([H, self.output_size]))
-        self.b3 = tf.Variable(tf.zeros(shape=[self.output_size]))
+            self.W3 = tf.Variable(self.xavier_init([H, self.output_size]))
+            self.b3 = tf.Variable(tf.zeros(shape=[self.output_size]))
 
-        self.theta = [self.W1, self.W2, self.W3, self.b1, self.b2, self.b3]
+            self.theta = [self.W1, self.W2, self.W3, self.b1, self.b2, self.b3]
 
-        # Connect layers
-        self.ho1 = tf.matmul(self.X, self.W1) + self.b1
-        self.ho1a = tf.nn.leaky_relu(self.ho1)
-        self.ho2 = tf.matmul(self.ho1a, self.W2) + self.b2
-        self.ho2a = tf.nn.leaky_relu(self.ho2)
-        self.ho3 = tf.matmul(self.ho2a, self.W3) + self.b3
-        self.out = self.ho3a = tf.nn.leaky_relu(self.ho3)
+            # Connect layers
+            self.ho1 = tf.matmul(self.X, self.W1) + self.b1
+            self.ho1a = tf.nn.leaky_relu(self.ho1)
+            self.ho2 = tf.matmul(self.ho1a, self.W2) + self.b2
+            self.ho2a = tf.nn.leaky_relu(self.ho2)
+            self.ho3 = tf.matmul(self.ho2a, self.W3) + self.b3
+            self.out = self.ho3a = tf.nn.leaky_relu(self.ho3)
 
-        if self.y_hat_shape is not None:
-            self.Y_hat = tf.reshape(self.out, self.y_hat_shape)
-        else:
-            self.Y_hat = self.out
+            if self.y_hat_shape is not None:
+                self.Y_hat = tf.reshape(self.out, self.y_hat_shape)
+            else:
+                self.Y_hat = self.out
 
-        self.build_loss()
-        self.build_solver()
+            self.build_loss()
+            self.build_solver()
 
     def build_loss(self):
         """
@@ -97,12 +105,12 @@ class NN(object):
         By default the loss is either the l2 norm (if use_y_sparse==False)
             or the sparse softmax cross entropy (if use_y_sparse==True).
         """
-
-        if not self.use_y_sparse:
-            self.loss = tf.norm(self.Y_hat - self.Y, axis=0)
-        else:
-            self.loss = tf.nn.sparse_softmax_cross_entropy_with_logits(
-                    labels=self.Y_sparse, logits=self.Y_hat)
+        with self.graph.as_default():
+            if not self.use_y_sparse:
+                self.loss = tf.norm(self.Y_hat - self.Y, axis=0)
+            else:
+                self.loss = tf.nn.sparse_softmax_cross_entropy_with_logits(
+                        labels=self.Y_sparse, logits=self.Y_hat)
 
 
     def build_solver(self):
@@ -113,8 +121,9 @@ class NN(object):
         By default we use a default AdamOptimizer over self.theta, minimizing
         `self.loss`.
         """
-        self.solver = tf.train.AdamOptimizer(learning_rate=1e-3).minimize(
-                self.loss, var_list=self.theta)
+        with self.graph.as_default():
+            self.solver = tf.train.AdamOptimizer(learning_rate=1e-3).minimize(
+                    self.loss, var_list=self.theta)
 
     def train_model(self, sess, data, mb_size=128, iters=1000, test_data=None):
         """
@@ -125,29 +134,32 @@ class NN(object):
         data [syn.Data] -- Training data.
         mb_size [int] -- Minibatch size.
         """
-        for it in range(iters):
-            X, Y = data.get_batch(mb_size)
-            feed_dict = self.data_to_feed_dict(data, mb_size)
-            avg_loss, _ = sess.run([tf.reduce_mean(self.loss), self.solver],
-                    feed_dict=feed_dict)
+        with self.graph.as_default():
+            for it in range(iters):
+                X, Y = data.get_batch(mb_size)
+                feed_dict = self.data_to_feed_dict(data, mb_size)
+                avg_loss, _ = sess.run([tf.reduce_mean(self.loss), self.solver],
+                        feed_dict=feed_dict)
 
-            if it % 100 == 0:
-                print("iter {}:".format(it))
-                print("avg_loss: {:.4}".format(avg_loss))
-                if test_data is not None:
-                    self.assess_model(sess, test_data)
-                print("")
+                if it % 100 == 0:
+                    print("iter {}:".format(it))
+                    print("avg_loss: {:.4}".format(avg_loss))
+                    if test_data is not None:
+                        self.assess_model(sess, test_data)
+                    print("")
 
     def data_to_feed_dict(self, data, mb_size):
-        X, Y = data.get_batch(mb_size)
-        if self.use_y_sparse:
-            Y_ph = self.Y_sparse
-        else:
-            Y_ph = self.Y
-        return {self.X: X, Y_ph: Y}
+        with self.graph.as_default():
+            X, Y = data.get_batch(mb_size)
+            if self.use_y_sparse:
+                Y_ph = self.Y_sparse
+            else:
+                Y_ph = self.Y
+            return {self.X: X, Y_ph: Y}
 
     def predict(self, sess, data):
-        pred = tf.nn.softmax(self.Y_hat, axis=-1)
+        with self.graph.as_default():
+            pred = tf.nn.softmax(self.Y_hat, axis=-1)
         return sess.run(pred, feed_dict={self.X: data.X, self.Y_sparse: data.Y})
 
     def predict_best(self, sess, data):
@@ -155,20 +167,22 @@ class NN(object):
         Return the index of the best, rather than the probability of each
         label.
         """
-        pred = tf.nn.softmax(self.Y_hat, axis=-1)
+        with self.graph.as_default():
+            pred = tf.nn.softmax(self.Y_hat, axis=-1)
         return sess.run(tf.argmax(pred, -1),
                 feed_dict={self.X: data.X, self.Y_sparse: data.Y})
 
 
     def assess_model(self, sess, data):
-        X, Y = data.X, data.Y
-        if self.use_y_sparse:
-            pred = tf.nn.softmax(self.Y_hat, axis=-1)
-            correct_prediction = tf.equal(tf.argmax(pred, -1), Y)
-            accuracy = tf.reduce_mean(tf.cast(correct_prediction, "float"))
+        with self.graph.as_default():
+            X, Y = data.X, data.Y
+            if self.use_y_sparse:
+                pred = tf.nn.softmax(self.Y_hat, axis=-1)
+                correct_prediction = tf.equal(tf.argmax(pred, -1), Y)
+                accuracy = tf.reduce_mean(tf.cast(correct_prediction, "float"))
 
-            acc = accuracy.eval({self.X: X, self.Y_sparse: Y}, session=sess)
-            print("Accuracy:", acc)
+                acc = accuracy.eval({self.X: X, self.Y_sparse: Y}, session=sess)
+                print("Accuracy:", acc)
 
             # TODO: create debugging/assessment interpretation tools
             # if acc > .85:
@@ -219,9 +233,10 @@ class DirectActions(NN):
                 num_labels=l, y_hat_shape=(-1, self.l, self.A), **kwargs)
 
     def build_loss(self):
-        self.loss = tf.nn.sparse_softmax_cross_entropy_with_logits(
-                labels=self.Y_sparse,
-                logits=self.Y_hat)
+        with self.graph.as_default():
+            self.loss = tf.nn.sparse_softmax_cross_entropy_with_logits(
+                    labels=self.Y_sparse,
+                    logits=self.Y_hat)
 
     def experiment(self, N=10, iters=1000, mb_size=128, samples=10000):
         g = GridWorldMDP(N, N)
@@ -233,12 +248,13 @@ class DirectActions(NN):
                 samples=100, beta=1e-3)
 
 
-        sess = tf.Session()
-        sess.run(tf.global_variables_initializer())
+        with self.graph.as_default():
+            sess = tf.Session()
+            sess.run(tf.global_variables_initializer())
 
-        self.train_model(sess, data, mb_size=mb_size, iters=iters,
-                test_data=test_data)
-        self.assess_model(sess, test_data)
+            self.train_model(sess, data, mb_size=mb_size, iters=iters,
+                    test_data=test_data)
+            self.assess_model(sess, test_data)
 
 class NNAux(NN):
     """
@@ -265,32 +281,34 @@ class NNAux(NN):
                 num_labels=l, y_hat_shape=(-1, self.l, self.A), **kwargs)
 
     def assess_model(self, sess, data):
-        NN.assess_model(self, sess, data)
-        X, Z = data.X, data.Z
+        with self.graph.as_default():
+            NN.assess_model(self, sess, data)
+            X, Z = data.X, data.Z
 
-        pred = tf.nn.softmax(self.aux, axis=-1)
-        correct_prediction = tf.equal(tf.argmax(pred, -1), Z)
-        accuracy = tf.reduce_mean(tf.cast(correct_prediction, "float"))
+            pred = tf.nn.softmax(self.aux, axis=-1)
+            correct_prediction = tf.equal(tf.argmax(pred, -1), Z)
+            accuracy = tf.reduce_mean(tf.cast(correct_prediction, "float"))
 
-        acc = accuracy.eval({self.X: X, self.Z_sparse: Z}, session=sess)
-        print("Aux Accuracy:", acc)
+            acc = accuracy.eval({self.X: X, self.Z_sparse: Z}, session=sess)
+            print("Aux Accuracy:", acc)
 
     def build_loss(self):
         if not self.aux_ready:
             return
-        NN.build_loss(self)
-        self.main_loss = self.loss
-        if self.use_z_sparse:
-            Z_ph = self.Z_sparse
-        else:
-            Z_ph = self.Z
-        self.aux_loss = tf.nn.sparse_softmax_cross_entropy_with_logits(
-                labels=Z_ph,
-                logits=self.aux,
-                )
-        w = self.aux_loss_weight
-        self.loss = tf.reduce_mean(self.aux_loss * w) + \
-                tf.reduce_mean(self.main_loss * (1-w))
+        with self.graph.as_default():
+            NN.build_loss(self)
+            self.main_loss = self.loss
+            if self.use_z_sparse:
+                Z_ph = self.Z_sparse
+            else:
+                Z_ph = self.Z
+            self.aux_loss = tf.nn.sparse_softmax_cross_entropy_with_logits(
+                    labels=Z_ph,
+                    logits=self.aux,
+                    )
+            w = self.aux_loss_weight
+            self.loss = tf.reduce_mean(self.aux_loss * w) + \
+                    tf.reduce_mean(self.main_loss * (1-w))
 
     def init_training(self):
         """
@@ -299,17 +317,20 @@ class NNAux(NN):
         """
         NN.init_training(self)
 
-        # True (x, y) coordinates of goal.
-        self.Z = tf.placeholder(tf.float32, shape=[None, 2], name="Z")
-        # True goal label.
-        self.Z_sparse = tf.placeholder(tf.int32, shape=[None], name="Z_sparse")
+        with self.graph.as_default():
+            # True (x, y) coordinates of goal.
+            self.Z = tf.placeholder(tf.float32, shape=[None, 2], name="Z")
+            # True goal label.
+            self.Z_sparse = tf.placeholder(tf.int32, shape=[None],
+                    name="Z_sparse")
 
-        self.aux_ready = True   # XXX: Might be cleaaner to have a
-                                # NN.init_training
-                                # option that skips self.build_loss() instead.
+            self.aux_ready = True   # XXX: Might be cleaaner to have a
+                                    # NN.init_training option that skips
+                                    # self.build_loss() instead.
 
     def build_solver(self):
-        if not self.aux_ready: return
+        if not self.aux_ready:
+            return
         NN.build_solver(self)
 
     def data_to_feed_dict(self, data, mb_size):
@@ -328,12 +349,13 @@ class NNAux(NN):
         test_data = syn.gen_predict_actions(g, goals, self.k, self.l,
                 samples=100, beta=1e-3)
 
-        sess = tf.Session()
-        sess.run(tf.global_variables_initializer())
+        with self.graph.as_default():
+            sess = tf.Session()
+            sess.run(tf.global_variables_initializer())
 
-        self.train_model(sess, data, mb_size=mb_size, iters=iters,
-                test_data=test_data)
-        self.assess_model(sess, test_data)
+            self.train_model(sess, data, mb_size=mb_size, iters=iters,
+                    test_data=test_data)
+            self.assess_model(sess, test_data)
 
 class DirectAuxLabelEnd(NNAux):
     """
@@ -345,16 +367,18 @@ class DirectAuxLabelEnd(NNAux):
     """
 
     def init_training(self):
-        NNAux.init_training(self)
-        H = self.hidden_size
+        with self.graph.as_default():
+            NNAux.init_training(self)
+            H = self.hidden_size
 
-        self.W_aux = tf.Variable(self.xavier_init([H, self.G]), name="W_aux")
-        self.oaux = tf.matmul(self.ho2a, self.W_aux)
-        self.aux = self.oauxa = tf.nn.leaky_relu(self.oaux, name="aux")
-        self.theta += [self.W_aux]
+            self.W_aux = tf.Variable(self.xavier_init([H, self.G]),
+                    name="W_aux")
+            self.oaux = tf.matmul(self.ho2a, self.W_aux)
+            self.aux = self.oauxa = tf.nn.leaky_relu(self.oaux, name="aux")
+            self.theta += [self.W_aux]
 
-        self.build_loss()
-        self.build_solver()
+            self.build_loss()
+            self.build_solver()
 
 class DirectAuxLabelMid(NNAux):
     """
@@ -378,53 +402,54 @@ class DirectAuxLabelMid(NNAux):
 
         # XXX: Move placeholder definitions into its own helper function in
         # class NN.
-        self.X = tf.placeholder(tf.float32, shape=[None, self.input_size],
-                name="X")
-        self.Y = tf.placeholder(tf.float32, shape=[None, self.output_size],
-                name="Y")
-        if self.num_labels == 1:
-            self.Y_sparse = tf.placeholder(tf.int32, shape=[None],
-                    name="Y_sparse")
-        else:
-            self.Y_sparse = tf.placeholder(tf.int32,
-                    shape=[None, self.num_labels],
-                    name="Y_sparse")
+        with self.graph.as_default():
+            self.X = tf.placeholder(tf.float32, shape=[None, self.input_size],
+                    name="X")
+            self.Y = tf.placeholder(tf.float32, shape=[None, self.output_size],
+                    name="Y")
+            if self.num_labels == 1:
+                self.Y_sparse = tf.placeholder(tf.int32, shape=[None],
+                        name="Y_sparse")
+            else:
+                self.Y_sparse = tf.placeholder(tf.int32,
+                        shape=[None, self.num_labels],
+                        name="Y_sparse")
 
-        # True (x, y) coordinates of goal.
-        self.Z = tf.placeholder(tf.float32, shape=[None, 2], name="Z")
-        # True goal label.
-        self.Z_sparse = tf.placeholder(tf.int32, shape=[None], name="Z_sparse")
+            # True (x, y) coordinates of goal.
+            self.Z = tf.placeholder(tf.float32, shape=[None, 2], name="Z")
+            # True goal label.
+            self.Z_sparse = tf.placeholder(tf.int32, shape=[None], name="Z_sparse")
 
-        H = self.hidden_size
-        self.W1 = tf.Variable(self.xavier_init([self.input_size, H]), name="W1")
-        self.b1 = tf.Variable(tf.zeros(shape=[H]), name="b1")
+            H = self.hidden_size
+            self.W1 = tf.Variable(self.xavier_init([self.input_size, H]), name="W1")
+            self.b1 = tf.Variable(tf.zeros(shape=[H]), name="b1")
 
-        self.W2 = tf.Variable(self.xavier_init([H, H]), name="W2")
-        self.b2 = tf.Variable(tf.zeros(shape=[H]))
+            self.W2 = tf.Variable(self.xavier_init([H, H]), name="W2")
+            self.b2 = tf.Variable(tf.zeros(shape=[H]))
 
-        self.W3 = tf.Variable(self.xavier_init([H, self.output_size]))
-        self.b3 = tf.Variable(tf.zeros(shape=[self.output_size]))
+            self.W3 = tf.Variable(self.xavier_init([H, self.output_size]))
+            self.b3 = tf.Variable(tf.zeros(shape=[self.output_size]))
 
-        self.theta = [self.W1, self.W2, self.W3, self.b1, self.b2, self.b3]
+            self.theta = [self.W1, self.W2, self.W3, self.b1, self.b2, self.b3]
 
-        # Connect layers
-        self.ho1 = tf.matmul(self.X, self.W1) + self.b1
-        self.ho1a = tf.nn.leaky_relu(self.ho1)
-        self.ho2 = tf.matmul(self.ho1a, self.W2) + self.b2
-        self.ho2a = tf.nn.leaky_relu(self.ho2)  # Aux calculations are here!
-        self.ho3 = tf.matmul(self.ho2a, self.W3) + self.b3
-        self.out = self.ho3a = tf.nn.leaky_relu(self.ho3)
+            # Connect layers
+            self.ho1 = tf.matmul(self.X, self.W1) + self.b1
+            self.ho1a = tf.nn.leaky_relu(self.ho1)
+            self.ho2 = tf.matmul(self.ho1a, self.W2) + self.b2
+            self.ho2a = tf.nn.leaky_relu(self.ho2)  # Aux calculations are here!
+            self.ho3 = tf.matmul(self.ho2a, self.W3) + self.b3
+            self.out = self.ho3a = tf.nn.leaky_relu(self.ho3)
 
-        self.aux = self.ho2a[:, -self.G:]
+            self.aux = self.ho2a[:, -self.G:]
 
-        if self.y_hat_shape is not None:
-            self.Y_hat = tf.reshape(self.out, self.y_hat_shape)
-        else:
-            self.Y_hat = self.out
+            if self.y_hat_shape is not None:
+                self.Y_hat = tf.reshape(self.out, self.y_hat_shape)
+            else:
+                self.Y_hat = self.out
 
-        self.aux_ready = True   # XXX: Might be cleaaner to have a
-                                # NN.init_training
-                                # option that skips self.build_loss() instead.
+            self.aux_ready = True   # XXX: Might be cleaaner to have a
+                                    # NN.init_training
+                                    # option that skips self.build_loss() instead.
 
-        self.build_loss()
-        self.build_solver()
+            self.build_loss()
+            self.build_solver()
